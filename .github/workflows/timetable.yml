@@ -2,11 +2,10 @@ name: 매일 시간표 전송
 
 on:
   schedule:
-    # 매일 오전 7시 KST (= 전날 22:00 UTC)
-    # 월~금만 실행 (UTC 기준 일~목)
+    # 매일 오전 7시 KST (= 전날 22:00 UTC), 월~금
     - cron: '0 22 * * 0-4'
-    # 테스트: 오늘 4시15분 KST (= 07:15 UTC)
-    - cron: '15 7 * * *'
+    # 테스트: 5시30분 KST (= 08:30 UTC)
+    - cron: '30 8 * * *'
   workflow_dispatch: # 수동 실행 버튼
 
 jobs:
@@ -20,7 +19,7 @@ jobs:
       - name: Node.js 설정
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: 패키지 설치
         run: npm install
