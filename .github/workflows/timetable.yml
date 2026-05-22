@@ -5,8 +5,8 @@ on:
     # 매일 오전 7시 KST (= 전날 22:00 UTC)
     # 월~금만 실행 (UTC 기준 일~목)
     - cron: '0 22 * * 0-4'
-    # 테스트: 오늘 12시 KST (= 03:00 UTC)
-    - cron: '0 3 * * *'
+    # 테스트: 오늘 1시 KST (= 04:00 UTC)
+    - cron: '0 4 * * *'
   workflow_dispatch: # 수동 실행 버튼
 
 jobs:
