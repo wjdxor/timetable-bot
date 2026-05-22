@@ -1,0 +1,15 @@
+{
+  "name": "timetable-bot",
+  "version": "1.0.0",
+  "description": "컴시간 시간표 텔레그램 봇",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.5",
+    "dotenv": "^16.0.0",
+    "iconv-lite": "^0.4.24",
+    "request": "^2.88.0"
+  }
+}

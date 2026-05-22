@@ -1,0 +1,30 @@
+name: 매일 시간표 전송
+
+on:
+  schedule:
+    # 매일 오전 7시 KST (= 전날 22:00 UTC)
+    # 월~금만 실행 (UTC 기준 일~목)
+    - cron: '0 22 * * 0-4'
+  workflow_dispatch: # 수동 실행 버튼
+
+jobs:
+  send-timetable:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 코드 가져오기
+        uses: actions/checkout@v4
+
+      - name: Node.js 설정
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 패키지 설치
+        run: npm install
+
+      - name: 시간표 전송
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node bot.js
