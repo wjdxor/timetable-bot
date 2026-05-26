@@ -1,13 +1,84 @@
-// comcigan-parser (MIT) - https://github.com/leegeunhyeok/comcigan-parser
 const request = require('request');
 const iconv = require('iconv-lite');
 const cheerio = require('cheerio');
+const vm = require('vm');
 
 if (typeof URL === 'undefined') {
   URL = require('url').URL;
 }
 
 const HOST = 'http://컴시간학생.kr';
+
+function makeSandbox() {
+  const noop = () => {};
+  const domStub = {};
+  ['ready','on','off','each','find','html','text','val','css','attr','prop',
+   'click','hide','show','append','prepend','remove','addClass','removeClass',
+   'toggleClass','data','trigger','bind','unbind','submit','change','focus',
+   'blur','keyup','keydown','mouseenter','mouseleave','hover','children','parent',
+   'parents','closest','siblings','next','prev','eq','first','last','filter','not',
+   'is','serialize','serializeArray','load','get','post','getJSON'].forEach(m => {
+    domStub[m] = function(arg) {
+      if (m === 'ready' && typeof arg === 'function') arg();
+      return domStub;
+    };
+  });
+  domStub.length = 0;
+  domStub[0] = null;
+
+  const $ = Object.assign(
+    function(arg) { if (typeof arg === 'function') arg(); return domStub; },
+    {
+      ajax: noop, get: noop, post: noop, getJSON: noop,
+      fn: domStub, extend: (a, b) => Object.assign(a || {}, b || {}),
+      when: () => ({ done: () => ({}), fail: noop }),
+      Deferred: () => ({ resolve: noop, reject: noop, promise: () => ({}) }),
+      isArray: Array.isArray, isFunction: (f) => typeof f === 'function',
+      trim: (s) => (s || '').trim(), each: noop, map: noop, grep: noop,
+      inArray: () => -1, noop,
+    }
+  );
+
+  const docStub = {
+    getElementById: () => null, getElementsByTagName: () => [],
+    getElementsByClassName: () => [], querySelector: () => null,
+    querySelectorAll: () => [],
+    createElement: () => ({ style: {}, innerHTML: '', value: '', appendChild: noop, setAttribute: noop, getAttribute: () => null }),
+    createTextNode: () => ({}),
+    body: { appendChild: noop, style: {}, innerHTML: '' },
+    head: { appendChild: noop },
+    addEventListener: noop, removeEventListener: noop,
+    cookie: '', readyState: 'complete', title: '',
+    location: { href: '', search: '', hash: '', pathname: '/' },
+  };
+
+  const sandbox = {
+    // JS 기본
+    isNaN, isFinite, parseInt, parseFloat,
+    Number, String, Boolean, Array, Object, Function, RegExp, Date, Math, JSON, Error,
+    Symbol, Map, Set, WeakMap, WeakSet, Promise,
+    encodeURIComponent, decodeURIComponent, encodeURI, decodeURI,
+    undefined, NaN, Infinity, console,
+    // 브라우저 전역
+    document: docStub,
+    location: { href: '', search: '', hash: '', pathname: '/', reload: noop, replace: noop },
+    history: { pushState: noop, replaceState: noop, back: noop },
+    navigator: { userAgent: '', language: 'ko', cookieEnabled: true },
+    screen: { width: 1920, height: 1080 },
+    alert: noop, confirm: () => false, prompt: () => null,
+    setTimeout: noop, setInterval: noop, clearTimeout: noop, clearInterval: noop,
+    requestAnimationFrame: noop, cancelAnimationFrame: noop,
+    XMLHttpRequest: function() { return { open: noop, send: noop, setRequestHeader: noop }; },
+    $, jQuery: $,
+  };
+
+  // window = sandbox 자신
+  sandbox.window = sandbox;
+  sandbox.self = sandbox;
+  sandbox.top = sandbox;
+
+  return sandbox;
+}
 
 class Timetable {
   constructor() {
@@ -75,38 +146,22 @@ class Timetable {
     const jsonString = await this._getData();
     const resultJson = JSON.parse(jsonString);
 
-    // window = Node.js global로 연결 → isNaN, parseInt 등 자동 해결
-    const jqueryStub = `
-var window = global;
-window.location = { href:'', search:'', hash:'', reload:function(){} };
-window.navigator = { userAgent:'' };
-window.alert = function(){};
-window.confirm = function(){ return false; };
-window.addEventListener = function(){};
-var document = { getElementById:function(){return null;}, getElementsByTagName:function(){return [];}, querySelector:function(){return null;}, querySelectorAll:function(){return [];}, createElement:function(){return {style:{},innerHTML:'',appendChild:function(){}};}, body:{appendChild:function(){},style:{}}, head:{appendChild:function(){}}, cookie:'', location:window.location, addEventListener:function(){}, write:function(){}, writeln:function(){} };
-window.document = document;
-var location = window.location;
-var navigator = window.navigator;
-var _domObj = { ready:function(f){if(typeof f==='function')f();return _domObj;}, on:function(){return _domObj;}, off:function(){return _domObj;}, each:function(){return _domObj;}, find:function(){return _domObj;}, html:function(){return '';}, text:function(){return '';}, val:function(){return '';}, css:function(){return _domObj;}, attr:function(){return _domObj;}, click:function(){return _domObj;}, hide:function(){return _domObj;}, show:function(){return _domObj;}, append:function(){return _domObj;}, length:0 };
-var $ = function(arg){ if(typeof arg==='function') arg(); return _domObj; };
-$.ajax=function(){}; $.fn={}; $.extend=function(a,b){return Object.assign(a||{},b||{});};
-`;
-
-    // 모든 <script> 태그 내용 추출 (numberPart 등 전역변수 누락 방지)
-    let allScripts = '';
+    // 모든 script 태그 추출 (멀티라인 포함)
+    let script = '';
     const allScriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
     let match;
-    while ((match = allScriptRegex.exec(this._pageSource))) allScripts += match[1] + '\n';
-    const script = jqueryStub + allScripts;
+    while ((match = allScriptRegex.exec(this._pageSource))) script += match[1] + '\n';
 
-    const functioName = script.match(/function 자료[^\(]*/gm)[0].replace(/\+s/, '').replace('function', '');
+    const functioName = script.match(/function 자료[^\(]*/gm)[0].replace(/\+s/, '').replace('function', '').trim();
     const classCount = resultJson['학급수'];
     const timetableData = {};
 
     for (let grade = 1; grade <= this._option['maxGrade']; grade++) {
       timetableData[grade] = {};
       for (let classNum = 1; classNum <= classCount[grade]; classNum++) {
-        timetableData[grade][classNum] = this._getClassTimetable({ data: jsonString, script, functioName }, grade, classNum);
+        timetableData[grade][classNum] = this._getClassTimetable(
+          { data: jsonString, script, functioName }, grade, classNum
+        );
       }
     }
     return timetableData;
@@ -126,13 +181,24 @@ $.ajax=function(){}; $.fn={}; $.extend=function(a,b){return Object.assign(a||{},
   }
 
   _getClassTimetable(codeConfig, grade, classNumber) {
-    const args = [codeConfig.data, grade, classNumber];
-    const call = codeConfig.functioName + '(' + args.join(',') + ')';
-    const script = codeConfig.script + '\n\n' + call;
-    const res = eval(script);
+    const sandbox = makeSandbox();
+    const ctx = vm.createContext(sandbox);
+
+    // 페이지 스크립트 실행 (전역 변수/함수 정의)
+    try {
+      vm.runInContext(codeConfig.script, ctx, { timeout: 5000 });
+    } catch (e) {
+      // 스크립트 일부 오류는 무시 (브라우저 전용 코드)
+    }
+
+    // 시간표 함수 호출
+    const call = `${codeConfig.functioName}(${JSON.stringify(codeConfig.data)}, ${grade}, ${classNumber})`;
+    const res = vm.runInContext(call, ctx, { timeout: 5000 });
+
     const _ch = cheerio.load(res);
     const $this = this;
     const timetable = [];
+
     _ch('tr').each(function (timeIdx) {
       const currentTime = timeIdx - 2;
       if (timeIdx <= 1) return;
