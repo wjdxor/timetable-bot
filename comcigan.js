@@ -1,3 +1,4 @@
+// comcigan-parser (MIT) - https://github.com/leegeunhyeok/comcigan-parser
 const request = require('request');
 const iconv = require('iconv-lite');
 const cheerio = require('cheerio');
@@ -73,30 +74,20 @@ class Timetable {
     this._isReady();
     const jsonString = await this._getData();
     const resultJson = JSON.parse(jsonString);
-
-    // 원본 방식: <script language...> 태그만 추출 ([\s\S] 로 멀티라인 지원)
     const startTag = this._pageSource.match(/<script language(.*?)>/gm)[0];
-    const escapedTag = startTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(escapedTag + '([\\s\\S]*?)<\\/script>', 'gi');
+    const regex = new RegExp(startTag + '(.*?)</script>', 'gi');
     let match;
     let script = '';
     while ((match = regex.exec(this._pageSource))) script += match[1];
 
-    const functioName = script
-      .match(/function 자료[^\(]*/gm)[0]
-      .replace(/\+s/, '')
-      .replace('function', '')
-      .trim();
-
+    const functioName = script.match(/function 자료[^\(]*/gm)[0].replace(/\+s/, '').replace('function', '');
     const classCount = resultJson['학급수'];
     const timetableData = {};
 
     for (let grade = 1; grade <= this._option['maxGrade']; grade++) {
       timetableData[grade] = {};
       for (let classNum = 1; classNum <= classCount[grade]; classNum++) {
-        timetableData[grade][classNum] = this._getClassTimetable(
-          { data: jsonString, script, functioName }, grade, classNum
-        );
+        timetableData[grade][classNum] = this._getClassTimetable({ data: jsonString, script, functioName }, grade, classNum);
       }
     }
     return timetableData;
@@ -105,8 +96,7 @@ class Timetable {
   async _getData() {
     const da1 = '0';
     const s7 = this._scData[0] + this._schoolCode;
-    const sc3 = this._extractCode.split('?')[0] + '?' +
-      Buffer.from(s7 + '_' + da1 + '_' + this._scData[2]).toString('base64');
+    const sc3 = this._extractCode.split('?')[0] + '?' + Buffer.from(s7 + '_' + da1 + '_' + this._scData[2]).toString('base64');
     return new Promise((resolve, reject) => {
       request(this._baseUrl + sc3, (err, _res, body) => {
         if (err) return reject(err);
@@ -120,23 +110,19 @@ class Timetable {
     const args = [codeConfig.data, grade, classNumber];
     const call = codeConfig.functioName + '(' + args.join(',') + ')';
     const script = codeConfig.script + '\n\n' + call;
-
-    /* eslint-disable no-eval */
     const res = eval(script);
-
-    const _ch = cheerio.load(res);
+    const $ = cheerio.load(res);
     const $this = this;
     const timetable = [];
-
-    _ch('tr').each(function (timeIdx) {
+    $('tr').each(function (timeIdx) {
       const currentTime = timeIdx - 2;
       if (timeIdx <= 1) return;
-      _ch(this).find('td').each(function (weekDayIdx) {
+      $(this).find('td').each(function (weekDayIdx) {
         const currentWeekDay = weekDayIdx - 1;
         if (weekDayIdx === 0 || weekDayIdx === 6) return;
         if (!timetable[currentWeekDay]) timetable[currentWeekDay] = [];
-        const subject = _ch(this).contents().first().text();
-        const teacher = _ch(this).contents().last().text();
+        const subject = $(this).contents().first().text();
+        const teacher = $(this).contents().last().text();
         timetable[currentWeekDay][currentTime] = {
           grade, class: classNumber,
           weekday: weekDayIdx - 1,
