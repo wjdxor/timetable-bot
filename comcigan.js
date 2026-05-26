@@ -75,23 +75,19 @@ class Timetable {
     const jsonString = await this._getData();
     const resultJson = JSON.parse(jsonString);
 
-    // jQuery 없는 환경에서 $ 오류 방지용 최소 스텁
+    // 브라우저 전역 객체 스텁 (window, document, $, location 등)
     const jqueryStub = `
-var $ = function(arg) {
-  var _o = {
-    ready: function(fn) { if (typeof fn === 'function') fn(); return _o; },
-    on: function() { return _o; }, off: function() { return _o; },
-    each: function() { return _o; }, find: function() { return _o; },
-    html: function() { return ''; }, text: function() { return ''; },
-    val: function() { return ''; }, css: function() { return _o; },
-    attr: function() { return _o; }, click: function() { return _o; },
-    hide: function() { return _o; }, show: function() { return _o; },
-    append: function() { return _o; }, length: 0,
-  };
-  if (typeof arg === 'function') arg();
-  return _o;
-};
-$.ajax = function() {}; $.fn = {}; $.extend = function(a,b){ return Object.assign(a||{},b||{}); };
+var _domObj = { ready:function(f){if(typeof f==='function')f();return _domObj;}, on:function(){return _domObj;}, off:function(){return _domObj;}, each:function(){return _domObj;}, find:function(){return _domObj;}, html:function(){return '';}, text:function(){return '';}, val:function(){return '';}, css:function(){return _domObj;}, attr:function(){return _domObj;}, click:function(){return _domObj;}, hide:function(){return _domObj;}, show:function(){return _domObj;}, append:function(){return _domObj;}, length:0 };
+var $ = function(arg){ if(typeof arg==='function') arg(); return _domObj; };
+$.ajax=function(){}; $.fn={}; $.extend=function(a,b){return Object.assign(a||{},b||{});};
+var document = { getElementById:function(){return null;}, getElementsByTagName:function(){return [];}, querySelector:function(){return null;}, querySelectorAll:function(){return [];}, createElement:function(){return {style:{},innerHTML:'',appendChild:function(){}};}, body:{appendChild:function(){},style:{}}, head:{appendChild:function(){}}, cookie:'', location:{href:'',search:'',hash:''}, addEventListener:function(){}, write:function(){}, writeln:function(){} };
+var window = { location:{href:'',search:'',hash:'',reload:function(){}}, document:document, alert:function(){}, confirm:function(){return false;}, setTimeout:function(){}, setInterval:function(){}, clearTimeout:function(){}, clearInterval:function(){}, addEventListener:function(){}, navigator:{userAgent:''} };
+var location = window.location;
+var navigator = window.navigator;
+var alert = function(){};
+var confirm = function(){ return false; };
+var setTimeout = function(){};
+var setInterval = function(){};
 `;
 
     // 모든 <script> 태그 내용 추출 (numberPart 등 전역변수 누락 방지)
