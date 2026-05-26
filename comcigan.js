@@ -1,84 +1,12 @@
 const request = require('request');
 const iconv = require('iconv-lite');
 const cheerio = require('cheerio');
-const vm = require('vm');
 
 if (typeof URL === 'undefined') {
   URL = require('url').URL;
 }
 
 const HOST = 'http://컴시간학생.kr';
-
-function makeSandbox() {
-  const noop = () => {};
-  const domStub = {};
-  ['ready','on','off','each','find','html','text','val','css','attr','prop',
-   'click','hide','show','append','prepend','remove','addClass','removeClass',
-   'toggleClass','data','trigger','bind','unbind','submit','change','focus',
-   'blur','keyup','keydown','mouseenter','mouseleave','hover','children','parent',
-   'parents','closest','siblings','next','prev','eq','first','last','filter','not',
-   'is','serialize','serializeArray','load','get','post','getJSON'].forEach(m => {
-    domStub[m] = function(arg) {
-      if (m === 'ready' && typeof arg === 'function') arg();
-      return domStub;
-    };
-  });
-  domStub.length = 0;
-  domStub[0] = null;
-
-  const $ = Object.assign(
-    function(arg) { if (typeof arg === 'function') arg(); return domStub; },
-    {
-      ajax: noop, get: noop, post: noop, getJSON: noop,
-      fn: domStub, extend: (a, b) => Object.assign(a || {}, b || {}),
-      when: () => ({ done: () => ({}), fail: noop }),
-      Deferred: () => ({ resolve: noop, reject: noop, promise: () => ({}) }),
-      isArray: Array.isArray, isFunction: (f) => typeof f === 'function',
-      trim: (s) => (s || '').trim(), each: noop, map: noop, grep: noop,
-      inArray: () => -1, noop,
-    }
-  );
-
-  const docStub = {
-    getElementById: () => null, getElementsByTagName: () => [],
-    getElementsByClassName: () => [], querySelector: () => null,
-    querySelectorAll: () => [],
-    createElement: () => ({ style: {}, innerHTML: '', value: '', appendChild: noop, setAttribute: noop, getAttribute: () => null }),
-    createTextNode: () => ({}),
-    body: { appendChild: noop, style: {}, innerHTML: '' },
-    head: { appendChild: noop },
-    addEventListener: noop, removeEventListener: noop,
-    cookie: '', readyState: 'complete', title: '',
-    location: { href: '', search: '', hash: '', pathname: '/' },
-  };
-
-  const sandbox = {
-    // JS 기본
-    isNaN, isFinite, parseInt, parseFloat,
-    Number, String, Boolean, Array, Object, Function, RegExp, Date, Math, JSON, Error,
-    Symbol, Map, Set, WeakMap, WeakSet, Promise,
-    encodeURIComponent, decodeURIComponent, encodeURI, decodeURI,
-    undefined, NaN, Infinity, console,
-    // 브라우저 전역
-    document: docStub,
-    location: { href: '', search: '', hash: '', pathname: '/', reload: noop, replace: noop },
-    history: { pushState: noop, replaceState: noop, back: noop },
-    navigator: { userAgent: '', language: 'ko', cookieEnabled: true },
-    screen: { width: 1920, height: 1080 },
-    alert: noop, confirm: () => false, prompt: () => null,
-    setTimeout: noop, setInterval: noop, clearTimeout: noop, clearInterval: noop,
-    requestAnimationFrame: noop, cancelAnimationFrame: noop,
-    XMLHttpRequest: function() { return { open: noop, send: noop, setRequestHeader: noop }; },
-    $, jQuery: $,
-  };
-
-  // window = sandbox 자신
-  sandbox.window = sandbox;
-  sandbox.self = sandbox;
-  sandbox.top = sandbox;
-
-  return sandbox;
-}
 
 class Timetable {
   constructor() {
@@ -146,13 +74,20 @@ class Timetable {
     const jsonString = await this._getData();
     const resultJson = JSON.parse(jsonString);
 
-    // 모든 script 태그 추출 (멀티라인 포함)
-    let script = '';
-    const allScriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+    // 원본 방식: <script language...> 태그만 추출 ([\s\S] 로 멀티라인 지원)
+    const startTag = this._pageSource.match(/<script language(.*?)>/gm)[0];
+    const escapedTag = startTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escapedTag + '([\\s\\S]*?)<\\/script>', 'gi');
     let match;
-    while ((match = allScriptRegex.exec(this._pageSource))) script += match[1] + '\n';
+    let script = '';
+    while ((match = regex.exec(this._pageSource))) script += match[1];
 
-    const functioName = script.match(/function 자료[^\(]*/gm)[0].replace(/\+s/, '').replace('function', '').trim();
+    const functioName = script
+      .match(/function 자료[^\(]*/gm)[0]
+      .replace(/\+s/, '')
+      .replace('function', '')
+      .trim();
+
     const classCount = resultJson['학급수'];
     const timetableData = {};
 
@@ -170,7 +105,8 @@ class Timetable {
   async _getData() {
     const da1 = '0';
     const s7 = this._scData[0] + this._schoolCode;
-    const sc3 = this._extractCode.split('?')[0] + '?' + Buffer.from(s7 + '_' + da1 + '_' + this._scData[2]).toString('base64');
+    const sc3 = this._extractCode.split('?')[0] + '?' +
+      Buffer.from(s7 + '_' + da1 + '_' + this._scData[2]).toString('base64');
     return new Promise((resolve, reject) => {
       request(this._baseUrl + sc3, (err, _res, body) => {
         if (err) return reject(err);
@@ -181,19 +117,12 @@ class Timetable {
   }
 
   _getClassTimetable(codeConfig, grade, classNumber) {
-    const sandbox = makeSandbox();
-    const ctx = vm.createContext(sandbox);
+    const args = [codeConfig.data, grade, classNumber];
+    const call = codeConfig.functioName + '(' + args.join(',') + ')';
+    const script = codeConfig.script + '\n\n' + call;
 
-    // 페이지 스크립트 실행 (전역 변수/함수 정의)
-    try {
-      vm.runInContext(codeConfig.script, ctx, { timeout: 5000 });
-    } catch (e) {
-      // 스크립트 일부 오류는 무시 (브라우저 전용 코드)
-    }
-
-    // 시간표 함수 호출
-    const call = `${codeConfig.functioName}(${JSON.stringify(codeConfig.data)}, ${grade}, ${classNumber})`;
-    const res = vm.runInContext(call, ctx, { timeout: 5000 });
+    /* eslint-disable no-eval */
+    const res = eval(script);
 
     const _ch = cheerio.load(res);
     const $this = this;
