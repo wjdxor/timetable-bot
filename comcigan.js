@@ -112,18 +112,18 @@ class Timetable {
     const call = codeConfig.functioName + '(' + args.join(',') + ')';
     const script = codeConfig.script + '\n\n' + call;
     const res = eval(script);
-    const $ = cheerio.load(res);
+    const _ch = cheerio.load(res);
     const $this = this;
     const timetable = [];
-    $('tr').each(function (timeIdx) {
+    _ch('tr').each(function (timeIdx) {
       const currentTime = timeIdx - 2;
       if (timeIdx <= 1) return;
-      $(this).find('td').each(function (weekDayIdx) {
+      _ch(this).find('td').each(function (weekDayIdx) {
         const currentWeekDay = weekDayIdx - 1;
         if (weekDayIdx === 0 || weekDayIdx === 6) return;
         if (!timetable[currentWeekDay]) timetable[currentWeekDay] = [];
-        const subject = $(this).contents().first().text();
-        const teacher = $(this).contents().last().text();
+        const subject = _ch(this).contents().first().text();
+        const teacher = _ch(this).contents().last().text();
         timetable[currentWeekDay][currentTime] = {
           grade, class: classNumber,
           weekday: weekDayIdx - 1,
