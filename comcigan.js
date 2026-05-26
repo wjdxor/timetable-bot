@@ -74,11 +74,12 @@ class Timetable {
     this._isReady();
     const jsonString = await this._getData();
     const resultJson = JSON.parse(jsonString);
-    const startTag = this._pageSource.match(/<script language(.*?)>/gm)[0];
-    const regex = new RegExp(startTag + '(.*?)</script>', 'gi');
-    let match;
+
+    // 모든 <script> 태그 내용 추출 (numberPart 등 전역변수 누락 방지)
     let script = '';
-    while ((match = regex.exec(this._pageSource))) script += match[1];
+    const allScriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+    let match;
+    while ((match = allScriptRegex.exec(this._pageSource))) script += match[1] + '\n';
 
     const functioName = script.match(/function 자료[^\(]*/gm)[0].replace(/\+s/, '').replace('function', '');
     const classCount = resultJson['학급수'];
