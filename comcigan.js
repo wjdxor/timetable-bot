@@ -75,11 +75,31 @@ class Timetable {
     const jsonString = await this._getData();
     const resultJson = JSON.parse(jsonString);
 
+    // jQuery 없는 환경에서 $ 오류 방지용 최소 스텁
+    const jqueryStub = `
+var $ = function(arg) {
+  var _o = {
+    ready: function(fn) { if (typeof fn === 'function') fn(); return _o; },
+    on: function() { return _o; }, off: function() { return _o; },
+    each: function() { return _o; }, find: function() { return _o; },
+    html: function() { return ''; }, text: function() { return ''; },
+    val: function() { return ''; }, css: function() { return _o; },
+    attr: function() { return _o; }, click: function() { return _o; },
+    hide: function() { return _o; }, show: function() { return _o; },
+    append: function() { return _o; }, length: 0,
+  };
+  if (typeof arg === 'function') arg();
+  return _o;
+};
+$.ajax = function() {}; $.fn = {}; $.extend = function(a,b){ return Object.assign(a||{},b||{}); };
+`;
+
     // 모든 <script> 태그 내용 추출 (numberPart 등 전역변수 누락 방지)
-    let script = '';
+    let allScripts = '';
     const allScriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
     let match;
-    while ((match = allScriptRegex.exec(this._pageSource))) script += match[1] + '\n';
+    while ((match = allScriptRegex.exec(this._pageSource))) allScripts += match[1] + '\n';
+    const script = jqueryStub + allScripts;
 
     const functioName = script.match(/function 자료[^\(]*/gm)[0].replace(/\+s/, '').replace('function', '');
     const classCount = resultJson['학급수'];
